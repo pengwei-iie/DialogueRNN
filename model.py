@@ -208,6 +208,9 @@ class BiModel(nn.Module):
         self.D_e = D_e
         self.D_h = D_h
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(input_size=D_m, hidden_size=D_e, num_layers=2, bidirectional=False, dropout=dropout,
+                            batch_first=True)
+        self.linear_lstm = nn.Linear(D_e, D_m)
         self.n_classes = n_classes
         self.dropout = nn.Dropout(dropout)
         self.dropout_rec = nn.Dropout(dropout + 0.15)
@@ -215,9 +218,9 @@ class BiModel(nn.Module):
                                         context_attention, D_a, dropout_rec)
         self.dialog_rnn_r = DialogueRNN(D_m, D_g, D_p, D_e, listener_state,
                                         context_attention, D_a, dropout_rec)
-        self.linear = nn.Linear(2 * D_e, 2 * D_h)
+        self.linear = nn.Linear(D_e, 2 * D_h)
         self.smax_fc = nn.Linear(2 * D_h, n_classes)
-        self.matchatt = MatchingAttention(2 * D_e, 2 * D_e, att_type='general2')
+        self.matchatt = MatchingAttention(D_e, 2 * D_e, att_type='general2')
 
     def _reverse_seq(self, X, mask):
         """
@@ -240,16 +243,19 @@ class BiModel(nn.Module):
         qmask -> seq_len, batch, party
         """
         U = self.embedding(x.view(-1, x.size()[-1]))
-        U = U[:, 0, :].view(x.size()[1], x.size()[0], -1)
+        emotions, hidden = self.lstm(U)
+        U = emotions[:, 0, :].view(x.size()[1], x.size()[0], -1)
+        U = self.linear_lstm(U)
         qmask = qmask.view(qmask.size()[1], qmask.size()[0], -1)
         emotions_f, alpha_f = self.dialog_rnn_f(U, qmask)  # seq_len, batch, D_e
         emotions_f = self.dropout_rec(emotions_f)
-        rev_U = self._reverse_seq(U, umask)
-        rev_qmask = self._reverse_seq(qmask, umask)
-        emotions_b, alpha_b = self.dialog_rnn_r(rev_U, rev_qmask)
-        emotions_b = self._reverse_seq(emotions_b, umask)
-        emotions_b = self.dropout_rec(emotions_b)
-        emotions = torch.cat([emotions_f, emotions_b], dim=-1)
+        # rev_U = self._reverse_seq(U, umask)
+        # rev_qmask = self._reverse_seq(qmask, umask)
+        # emotions_b, alpha_b = self.dialog_rnn_r(rev_U, rev_qmask)
+        # emotions_b = self._reverse_seq(emotions_b, umask)
+        # emotions_b = self.dropout_rec(emotions_b)
+        # emotions = torch.cat([emotions_f, emotions_b], dim=-1)
+        emotions = emotions_f
         if att2:
             att_emotions = []
             alpha = []
@@ -265,9 +271,9 @@ class BiModel(nn.Module):
         hidden = self.dropout(hidden)
         log_prob = F.log_softmax(self.smax_fc(hidden), 2)  # seq_len, batch, n_classes
         if att2:
-            return log_prob, alpha, alpha_f, alpha_b
+            return log_prob, alpha, alpha_f
         else:
-            return log_prob, [], alpha_f, alpha_b
+            return log_prob, [], alpha_f
 
 
 class BiE2EModel(nn.Module):
