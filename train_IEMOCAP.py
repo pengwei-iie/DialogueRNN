@@ -66,7 +66,7 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
         textf, visuf, acouf, qmask, umask, label =\
                 [d.cuda() for d in data[:-1]] if cuda else data[:-1]
         #log_prob = model(torch.cat((textf,acouf,visuf),dim=-1), qmask,umask,att2=True) # seq_len, batch, n_classes
-        log_prob, alpha, alpha_f, alpha_b = model(textf, qmask,umask,att2=True) # seq_len, batch, n_classes
+        log_prob = model(textf, qmask,umask,att2=True) # seq_len, batch, n_classes
         lp_ = log_prob.transpose(0,1).contiguous().view(-1,log_prob.size()[2]) # batch*seq_len, n_classes
         labels_ = label.view(-1) # batch*seq_len
         loss = loss_function(lp_, labels_, umask)
@@ -84,9 +84,9 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
                     writer.add_histogram(param[0], param[1].grad, epoch)
             optimizer.step()
         else:
-            alphas += alpha
-            alphas_f += alpha_f
-            alphas_b += alpha_b
+            # alphas += alpha
+            # alphas_f += alpha_f
+            # alphas_b += alpha_b
             vids += data[-1]
 
     if preds!=[]:
@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
     D_a = 100 # concat attention
 
-    model = BiModel(D_m, D_g, D_p, D_e, D_h,
+    model = Model(D_m, D_g, D_p, D_e, D_h,
                     n_classes=n_classes,
                     listener_state=args.active_listener,
                     context_attention=args.attention,
